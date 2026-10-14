@@ -1,4 +1,6 @@
 import math
+import matplotlib.pyplot as plt
+from calculatefk import elbow_world_position, forward_kinematics
 
 
 def base_angle_to_target(target_x, target_y):
@@ -53,6 +55,85 @@ def elbow_angle_to_target(link1, link2, wrist_reach, wrist_relative_height):
 
     return elbow_deg
 
-print(elbow_angle_to_target(100, 80, 180, 0))   # 0.0
-print(elbow_angle_to_target(100, 80, 100, 80))  # Approximately 90.0
-print(elbow_angle_to_target(100, 80, 20, 0))    
+def shoulder_angle_to_target(link1, link2, wrist_reach, wrist_relative_height, elbow_deg):
+    # Convert elbow_deg to radians.
+    elbow_rad = math.radians(elbow_deg)
+
+    # Calculate the direction toward the wrist target.
+    target_direction = math.atan2(wrist_relative_height, wrist_reach)
+
+    # Calculate offset_horizontal and offset_vertical.
+    offset_horizontal = link1 + link2 * math.cos(elbow_rad)
+
+    offset_vertical = link2 * math.sin(elbow_rad)
+
+    # Calculate the offset angle using atan2().
+    offset_angle = math.atan2(offset_vertical, offset_horizontal)
+
+    # Subtract the offset from the target direction.
+    shoulder_rad = target_direction - offset_angle
+
+    # Convert the shoulder angle to degrees and return it.
+    shoulder_deg = math.degrees(shoulder_rad)
+
+    return shoulder_deg
+
+def wrist_angle_to_target(tool_tilt_deg, shoulder_deg, elbow_deg):
+    # Subtract the shoulder and elbow contributions from the desired tilt.
+    wrist_deg = tool_tilt_deg - shoulder_deg - elbow_deg
+    # Return the wrist angle in degrees.
+    return wrist_deg
+
+def inverse_kinematics(link1, link2, target_x, target_y, target_z, shoulder_height, tool_length, tool_tilt_deg):
+    # Calculate the base angle.
+    base_deg = base_angle_to_target(target_x, target_y)
+    # Calculate and unpack the wrist target.
+    wrist_reach, wrist_relative_height = wrist_target(target_x, target_y, target_z, shoulder_height, tool_length, tool_tilt_deg)
+    # Calculate the elbow angle.
+    elbow_deg = -elbow_angle_to_target(link1, link2, wrist_reach, wrist_relative_height)
+    # Calculate the shoulder angle using that elbow angle.
+    shoulder_deg = shoulder_angle_to_target(link1, link2, wrist_reach, wrist_relative_height, elbow_deg)
+    # Calculate the wrist angle.
+    wrist_deg = wrist_angle_to_target(tool_tilt_deg, shoulder_deg, elbow_deg)
+    # Return base_deg, shoulder_deg, elbow_deg, wrist_deg.
+    return base_deg, shoulder_deg, elbow_deg, wrist_deg
+
+if __name__ == "__main__":
+    
+    target_x, target_y, target_z = 100, 0, 20
+    shoulder_height = 50
+    tool_tilt_deg = -90
+
+    base_deg, shoulder_deg, elbow_deg, wrist_deg = inverse_kinematics(100, 80, target_x, target_y, target_z, shoulder_height, 30, tool_tilt_deg)
+
+    shoulder = (0, 0, shoulder_height)
+    elbow = elbow_world_position(100, base_deg, shoulder_deg, shoulder_height)
+    wrist = forward_kinematics(100, 80, base_deg, shoulder_deg, elbow_deg, shoulder_height, 0, 0)
+    gripping_point = forward_kinematics(100, 80, base_deg, shoulder_deg, elbow_deg, shoulder_height, wrist_deg, 30)
+
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection="3d")
+
+    ax.set_xlabel("X (mm)")
+    ax.set_ylabel("Y (mm)")
+    ax.set_zlabel("Z (mm)")
+
+    ax.set_xlim(-220, 220)
+    ax.set_ylim(-220, 220)
+    ax.set_zlim(-180, 280)
+    ax.set_box_aspect((440, 440, 460))
+    ax.view_init(elev=25, azim=-60)
+
+    ax.plot(
+        [shoulder[0], elbow[0], wrist[0], gripping_point[0]],
+        [shoulder[1], elbow[1], wrist[1], gripping_point[1]],
+        [shoulder[2], elbow[2], wrist[2], gripping_point[2]],
+        marker="o",
+        linewidth=3,
+        label="Arm"
+    )
+
+    ax.scatter(target_x, target_y, target_z, marker="x", s=100, color="red", label="Target")
+    ax.legend()
+
+    plt.show()

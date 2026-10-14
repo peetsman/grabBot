@@ -60,65 +60,65 @@ def elbow_world_position(link1, base_deg, shoulder_deg, shoulder_height):
     # Return all three coordinates.
     return elbow_x, elbow_y, elbow_z
 
+if __name__ == "__main__":
 
 
+    link1 = 100
+    link2 = 80
+    tool_length = 30
+    shoulder_height = 50
 
-link1 = 100
-link2 = 80
-tool_length = 30
-shoulder_height = 50
+    fig = plt.figure(figsize=(8, 8))
+    ax = fig.add_subplot(111, projection="3d")
+    fig.subplots_adjust(bottom=0.32)
 
-fig = plt.figure(figsize=(8, 8))
-ax = fig.add_subplot(111, projection="3d")
-fig.subplots_adjust(bottom=0.32)
+    ax.set_xlabel("X (mm)")
+    ax.set_ylabel("Y (mm)")
+    ax.set_zlabel("Z (mm)")
 
-ax.set_xlabel("X (mm)")
-ax.set_ylabel("Y (mm)")
-ax.set_zlabel("Z (mm)")
+    ax.set_xlim(-220, 220)
+    ax.set_ylim(-220, 220)
+    ax.set_zlim(-180, 280)
+    ax.set_box_aspect((440, 440, 460))
+    ax.view_init(elev=25, azim=-60)
 
-ax.set_xlim(-220, 220)
-ax.set_ylim(-220, 220)
-ax.set_zlim(-180, 280)
-ax.set_box_aspect((440, 440, 460))
-ax.view_init(elev=25, azim=-60)
+    # Create one line that we will update instead of drawing new lines.
+    arm_line, = ax.plot([], [], [], marker="o", linewidth=3)
 
-# Create one line that we will update instead of drawing new lines.
-arm_line, = ax.plot([], [], [], marker="o", linewidth=3)
-
-# Each slider has its own small plotting area.
-base_slider = Slider(fig.add_axes([0.20, 0.24, 0.65, 0.025]), "Base", 0, 360, valinit=30, valstep=1)
-shoulder_slider = Slider(fig.add_axes([0.20, 0.19, 0.65, 0.025]), "Shoulder", -90, 90, valinit=45, valstep=1)
-elbow_slider = Slider(fig.add_axes([0.20, 0.14, 0.65, 0.025]), "Elbow", -150, 150, valinit=-60, valstep=1)
-wrist_slider = Slider(fig.add_axes([0.20, 0.09, 0.65, 0.025]), "Wrist", -180, 180, valinit=-75, valstep=1)
-
-
-def update_arm(value):
-    base_deg = base_slider.val
-    shoulder_deg = shoulder_slider.val
-    elbow_deg = elbow_slider.val
-    wrist_deg = wrist_slider.val
-
-    shoulder = (0, 0, shoulder_height)
-    elbow = elbow_world_position(link1, base_deg, shoulder_deg, shoulder_height)
-    wrist = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, 0, 0)
-    gripping_point = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, wrist_deg, tool_length)
-
-    arm_line.set_data_3d(
-        [shoulder[0], elbow[0], wrist[0], gripping_point[0]],
-        [shoulder[1], elbow[1], wrist[1], gripping_point[1]],
-        [shoulder[2], elbow[2], wrist[2], gripping_point[2]]
-    )
-
-    fig.canvas.draw_idle()
+    # Each slider has its own small plotting area.
+    base_slider = Slider(fig.add_axes([0.20, 0.24, 0.65, 0.025]), "Base", 0, 360, valinit=30, valstep=1)
+    shoulder_slider = Slider(fig.add_axes([0.20, 0.19, 0.65, 0.025]), "Shoulder", -90, 90, valinit=45, valstep=1)
+    elbow_slider = Slider(fig.add_axes([0.20, 0.14, 0.65, 0.025]), "Elbow", -150, 150, valinit=-60, valstep=1)
+    wrist_slider = Slider(fig.add_axes([0.20, 0.09, 0.65, 0.025]), "Wrist", -180, 180, valinit=-75, valstep=1)
 
 
-# Run update_arm whenever any slider changes.
-base_slider.on_changed(update_arm)
-shoulder_slider.on_changed(update_arm)
-elbow_slider.on_changed(update_arm)
-wrist_slider.on_changed(update_arm)
+    def update_arm(value):
+        base_deg = base_slider.val
+        shoulder_deg = shoulder_slider.val
+        elbow_deg = elbow_slider.val
+        wrist_deg = wrist_slider.val
 
-# Draw the starting pose.
-update_arm(None)
+        shoulder = (0, 0, shoulder_height)
+        elbow = elbow_world_position(link1, base_deg, shoulder_deg, shoulder_height)
+        wrist = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, 0, 0)
+        gripping_point = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, wrist_deg, tool_length)
 
-plt.show()
+        arm_line.set_data_3d(
+            [shoulder[0], elbow[0], wrist[0], gripping_point[0]],
+            [shoulder[1], elbow[1], wrist[1], gripping_point[1]],
+            [shoulder[2], elbow[2], wrist[2], gripping_point[2]]
+        )
+
+        fig.canvas.draw_idle()
+
+
+    # Run update_arm whenever any slider changes.
+    base_slider.on_changed(update_arm)
+    shoulder_slider.on_changed(update_arm)
+    elbow_slider.on_changed(update_arm)
+    wrist_slider.on_changed(update_arm)
+
+    # Draw the starting pose.
+    update_arm(None)
+
+    plt.show()
