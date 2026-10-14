@@ -2,6 +2,12 @@ import math
 import matplotlib.pyplot as plt
 from calculatefk import elbow_world_position, forward_kinematics
 
+joint_limits = {
+    "base": (0, 360),
+    "shoulder": (-90, 90),
+    "elbow": (-150, 150),
+    "wrist": (-180, 180)
+}
 
 def base_angle_to_target(target_x, target_y):
     # Calculate the direction in radians.
@@ -98,6 +104,36 @@ def inverse_kinematics(link1, link2, target_x, target_y, target_z, shoulder_heig
     # Return base_deg, shoulder_deg, elbow_deg, wrist_deg.
     return base_deg, shoulder_deg, elbow_deg, wrist_deg
 
+def angle_within_limits(angle_deg, minimum_deg, maximum_deg):
+    return minimum_deg <= angle_deg <= maximum_deg
+
+def check_joint_limits(base_deg, shoulder_deg, elbow_deg, wrist_deg, joint_limits):
+    joint_angles = {
+        "base": base_deg,
+        "shoulder": shoulder_deg,
+        "elbow": elbow_deg,
+        "wrist": wrist_deg
+    }
+
+    failed_joints = []
+
+    for joint_name, angle_deg in joint_angles.items():
+        minimum_deg, maximum_deg = joint_limits[joint_name]
+
+        if not angle_within_limits(angle_deg, minimum_deg, maximum_deg):
+            failed_joints.append(joint_name)
+
+    limits_ok = len(failed_joints) == 0
+
+    return limits_ok, failed_joints
+
+def above_tabletop(shoulder, elbow, wrist, gripping_point):
+    for point in (shoulder, elbow, wrist, gripping_point):
+        if point[2] < 0:
+            return False
+
+    return True
+
 if __name__ == "__main__":
     
     target_x, target_y, target_z = 100, 0, 20
@@ -111,29 +147,41 @@ if __name__ == "__main__":
     wrist = forward_kinematics(100, 80, base_deg, shoulder_deg, elbow_deg, shoulder_height, 0, 0)
     gripping_point = forward_kinematics(100, 80, base_deg, shoulder_deg, elbow_deg, shoulder_height, wrist_deg, 30)
 
-    fig = plt.figure(figsize=(8, 8))
-    ax = fig.add_subplot(111, projection="3d")
+    limits_ok, failed_joints = check_joint_limits(30, 120, -160, -75, joint_limits)
 
-    ax.set_xlabel("X (mm)")
-    ax.set_ylabel("Y (mm)")
-    ax.set_zlabel("Z (mm)")
+    print("Joint limits passed:", limits_ok)
+    print("Failed joints:", failed_joints)
+    if limits_ok:
+        if above_tabletop(shoulder, elbow, wrist, gripping_point):
 
-    ax.set_xlim(-220, 220)
-    ax.set_ylim(-220, 220)
-    ax.set_zlim(-180, 280)
-    ax.set_box_aspect((440, 440, 460))
-    ax.view_init(elev=25, azim=-60)
 
-    ax.plot(
-        [shoulder[0], elbow[0], wrist[0], gripping_point[0]],
-        [shoulder[1], elbow[1], wrist[1], gripping_point[1]],
-        [shoulder[2], elbow[2], wrist[2], gripping_point[2]],
-        marker="o",
-        linewidth=3,
-        label="Arm"
-    )
+            fig = plt.figure(figsize=(8, 8))
+            ax = fig.add_subplot(111, projection="3d")
 
-    ax.scatter(target_x, target_y, target_z, marker="x", s=100, color="red", label="Target")
-    ax.legend()
+            ax.set_xlabel("X (mm)")
+            ax.set_ylabel("Y (mm)")
+            ax.set_zlabel("Z (mm)")
 
-    plt.show()
+            ax.set_xlim(-220, 220)
+            ax.set_ylim(-220, 220)
+            ax.set_zlim(-180, 280)
+            ax.set_box_aspect((440, 440, 460))
+            ax.view_init(elev=25, azim=-60)
+
+            ax.plot(
+                [shoulder[0], elbow[0], wrist[0], gripping_point[0]],
+                [shoulder[1], elbow[1], wrist[1], gripping_point[1]],
+                [shoulder[2], elbow[2], wrist[2], gripping_point[2]],
+                marker="o",
+                linewidth=3,
+                label="Arm"
+            )
+
+            ax.scatter(target_x, target_y, target_z, marker="x", s=100, color="red", label="Target")
+            ax.legend()
+
+            plt.show()
+        else:
+            print("Pose rejected: part of the arm is below the tabletop.")
+    else:
+        print("Pose rejected. Joints outside their limits:", failed_joints)
