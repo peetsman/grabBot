@@ -90,17 +90,20 @@ def wrist_angle_to_target(tool_tilt_deg, shoulder_deg, elbow_deg):
     # Return the wrist angle in degrees.
     return wrist_deg
 
-def inverse_kinematics(link1, link2, target_x, target_y, target_z, shoulder_height, tool_length, tool_tilt_deg):
+def inverse_kinematics(link1, link2, target_x, target_y, target_z, shoulder_height, tool_length, tool_tilt_deg, elbow_sign=-1):
     # Calculate the base angle.
     base_deg = base_angle_to_target(target_x, target_y)
     # Calculate and unpack the wrist target.
     wrist_reach, wrist_relative_height = wrist_target(target_x, target_y, target_z, shoulder_height, tool_length, tool_tilt_deg)
     # Calculate the elbow angle.
-    elbow_deg = -elbow_angle_to_target(link1, link2, wrist_reach, wrist_relative_height)
+    elbow_deg = elbow_sign * elbow_angle_to_target(link1, link2, wrist_reach, wrist_relative_height)
     # Calculate the shoulder angle using that elbow angle.
     shoulder_deg = shoulder_angle_to_target(link1, link2, wrist_reach, wrist_relative_height, elbow_deg)
     # Calculate the wrist angle.
     wrist_deg = wrist_angle_to_target(tool_tilt_deg, shoulder_deg, elbow_deg)
+    
+    if elbow_sign not in (-1, 1):
+        raise ValueError("elbow_sign must be -1 or 1.")
     # Return base_deg, shoulder_deg, elbow_deg, wrist_deg.
     return base_deg, shoulder_deg, elbow_deg, wrist_deg
 
@@ -134,54 +137,92 @@ def above_tabletop(shoulder, elbow, wrist, gripping_point):
 
     return True
 
+def candidate_is_valid(angles, link1, link2, shoulder_height, tool_length, joint_limits):
+    base_deg, shoulder_deg, elbow_deg, wrist_deg = angles
+
+    # Check joint limits and unpack both returned values.
+    limits_ok, failed_joints = check_joint_limits(base_deg, shoulder_deg, elbow_deg, wrist_deg, joint_limits)
+
+    # If limits fail, return False immediately.
+    if not limits_ok:
+        return False
+    # Calculate shoulder, elbow, wrist, and gripping-point coordinates.
+    shoulder = (0, 0, shoulder_height)
+    elbow = elbow_world_position(link1, base_deg, shoulder_deg, shoulder_height)
+    wrist = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, 0, 0)
+    gripping_point = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, wrist_deg, tool_length)
+
+    # Return the result of above_tabletop().
+    return above_tabletop(shoulder, elbow, wrist, gripping_point)
+
+
 if __name__ == "__main__":
-    
-    target_x, target_y, target_z = 100, 0, 20
+    link1 = 100
+    link2 = 80
+    tool_length = 30
     shoulder_height = 50
+
+    target_x, target_y, target_z = 100, 0, 20
     tool_tilt_deg = -90
 
-    base_deg, shoulder_deg, elbow_deg, wrist_deg = inverse_kinematics(100, 80, target_x, target_y, target_z, shoulder_height, 30, tool_tilt_deg)
+    # Calculate both elbow configurations.
+    negative_solution = inverse_kinematics(link1, link2, target_x, target_y, target_z, shoulder_height, tool_length, tool_tilt_deg, elbow_sign=-1)
+    positive_solution = inverse_kinematics(link1, link2, target_x, target_y, target_z, shoulder_height, tool_length, tool_tilt_deg, elbow_sign=1)
 
-    shoulder = (0, 0, shoulder_height)
-    elbow = elbow_world_position(100, base_deg, shoulder_deg, shoulder_height)
-    wrist = forward_kinematics(100, 80, base_deg, shoulder_deg, elbow_deg, shoulder_height, 0, 0)
-    gripping_point = forward_kinematics(100, 80, base_deg, shoulder_deg, elbow_deg, shoulder_height, wrist_deg, 30)
+    # Check joint limits and tabletop clearance for each configuration.
+    negative_ok = candidate_is_valid(negative_solution, link1, link2, shoulder_height, tool_length, joint_limits)
+    positive_ok = candidate_is_valid(positive_solution, link1, link2, shoulder_height, tool_length, joint_limits)
 
-    limits_ok, failed_joints = check_joint_limits(30, 120, -160, -75, joint_limits)
+    print("Negative passes current checks:", negative_ok)
+    print("Positive passes current checks:", positive_ok)
 
-    print("Joint limits passed:", limits_ok)
-    print("Failed joints:", failed_joints)
-    if limits_ok:
-        if above_tabletop(shoulder, elbow, wrist, gripping_point):
-
-
-            fig = plt.figure(figsize=(8, 8))
-            ax = fig.add_subplot(111, projection="3d")
-
-            ax.set_xlabel("X (mm)")
-            ax.set_ylabel("Y (mm)")
-            ax.set_zlabel("Z (mm)")
-
-            ax.set_xlim(-220, 220)
-            ax.set_ylim(-220, 220)
-            ax.set_zlim(-180, 280)
-            ax.set_box_aspect((440, 440, 460))
-            ax.view_init(elev=25, azim=-60)
-
-            ax.plot(
-                [shoulder[0], elbow[0], wrist[0], gripping_point[0]],
-                [shoulder[1], elbow[1], wrist[1], gripping_point[1]],
-                [shoulder[2], elbow[2], wrist[2], gripping_point[2]],
-                marker="o",
-                linewidth=3,
-                label="Arm"
-            )
-
-            ax.scatter(target_x, target_y, target_z, marker="x", s=100, color="red", label="Target")
-            ax.legend()
-
-            plt.show()
-        else:
-            print("Pose rejected: part of the arm is below the tabletop.")
+    # Choose a configuration that passed.
+    if negative_ok:
+        selected_solution = negative_solution
+    elif positive_ok:
+        selected_solution = positive_solution
     else:
-        print("Pose rejected. Joints outside their limits:", failed_joints)
+        selected_solution = None
+
+    # Only calculate plotting points and open the plot if a solution passed.
+    if selected_solution is None:
+        print("Neither elbow configuration passes the current checks.")
+    else:
+        base_deg, shoulder_deg, elbow_deg, wrist_deg = selected_solution
+
+        print("Selected angles:", selected_solution)
+
+        shoulder = (0, 0, shoulder_height)
+        elbow = elbow_world_position(link1, base_deg, shoulder_deg, shoulder_height)
+        wrist = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, 0, 0)
+        gripping_point = forward_kinematics(link1, link2, base_deg, shoulder_deg, elbow_deg, shoulder_height, wrist_deg, tool_length)
+
+        print("Target:", (target_x, target_y, target_z))
+        print("Calculated gripping point:", gripping_point)
+
+        fig = plt.figure(figsize=(8, 8))
+        ax = fig.add_subplot(111, projection="3d")
+
+        ax.set_xlabel("X (mm)")
+        ax.set_ylabel("Y (mm)")
+        ax.set_zlabel("Z (mm)")
+
+        ax.set_xlim(-220, 220)
+        ax.set_ylim(-220, 220)
+        ax.set_zlim(-180, 280)
+        ax.set_box_aspect((440, 440, 460))
+        ax.view_init(elev=25, azim=-60)
+
+        ax.plot(
+            [shoulder[0], elbow[0], wrist[0], gripping_point[0]],
+            [shoulder[1], elbow[1], wrist[1], gripping_point[1]],
+            [shoulder[2], elbow[2], wrist[2], gripping_point[2]],
+            marker="o",
+            linewidth=3,
+            label="Arm"
+        )
+
+        ax.scatter(target_x, target_y, target_z, marker="x", s=100, color="red", label="Target")
+        ax.legend()
+
+        plt.show()
